@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Trust system certificate authorities only; never trust user-added CAs in production -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Enforce strict HTTPS-only transport for app APIs, directory, and Firebase backend domains -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">espn.com</domain>
+        <domain includeSubdomains="true">iptv-org.github.io</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseapp.com</domain>
+        <domain includeSubdomains="true">gstatic.com</domain>
+        <domain includeSubdomains="true">mux.dev</domain>
+        <domain includeSubdomains="true">apple.com</domain>
+    </domain-config>
+</network-security-config>
