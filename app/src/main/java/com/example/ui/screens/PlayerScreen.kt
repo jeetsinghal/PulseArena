@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -44,8 +47,11 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.PlayerView
 import com.example.data.AudioTrackOption
 import com.example.data.EventStatusState
@@ -93,9 +99,12 @@ fun PlayerScreen(
     val channel = activeChannel ?: viewModel.backupStreams.first()
 
     var isFullscreen by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(false) }
     var playbackStatus by remember { mutableStateOf("CONNECTING") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var audioWarning by remember { mutableStateOf<String?>(null) }
     var retriedAsHls by remember(channel.id) { mutableStateOf(false) }
+    var reloadTrigger by remember(channel.id) { mutableIntStateOf(0) }
     var autoHopCount by remember { mutableIntStateOf(0) }
 
     var showQualitySheet by remember { mutableStateOf(false) }
@@ -133,16 +142,48 @@ fun PlayerScreen(
     val exoPlayer = remember {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 2_500,
-                /* maxBufferMs = */ 15_000,
-                /* bufferForPlaybackMs = */ 600,
-                /* bufferForPlaybackAfterRebufferMs = */ 1_200
+                /* minBufferMs = */ 10_000,
+                /* maxBufferMs = */ 30_000,
+                /* bufferForPlaybackMs = */ 1_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
+
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+
+        val trackSelector = DefaultTrackSelector(context).apply {
+            parameters = buildUponParameters()
+                .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                .setAllowAudioMixedSampleRateAdaptiveness(true)
+                .setAllowAudioMixedChannelCountAdaptiveness(true)
+                .setAllowAudioNonSeamlessAdaptiveness(true)
+                .setExceedAudioConstraintsIfNecessary(true)
+                .setExceedRendererCapabilitiesIfNecessary(true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
+        }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
+
+        ExoPlayer.Builder(context, renderersFactory)
+            .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+            .apply {
+                volume = 1f
+            }
+    }
+
+    LaunchedEffect(isMuted) {
+        exoPlayer.volume = if (isMuted) 0f else 1f
     }
 
     LaunchedEffect(captionsEnabled) {
@@ -152,39 +193,99 @@ fun PlayerScreen(
             .build()
     }
 
-    LaunchedEffect(channel.id, channel.streamUrl) {
+    fun buildHttpFactory(userAgentOverride: String?, referrer: String?): DefaultHttpDataSource.Factory {
+        val factory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(8_000)
+            .setReadTimeoutMs(10_000)
+            .setUserAgent(
+                userAgentOverride
+                    ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            )
+        referrer?.let { ref ->
+            factory.setDefaultRequestProperties(mapOf("Referer" to ref))
+        }
+        return factory
+    }
+
+    LaunchedEffect(channel.id, channel.streamUrl, reloadTrigger) {
         errorMessage = null
+        audioWarning = null
         playbackStatus = "CONNECTING"
         retriedAsHls = false
         detectedQualities = emptyList()
         detectedAudioTracks = emptyList()
         detectedSubtitleTracks = emptyList()
 
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(12_000)
-            .setReadTimeoutMs(15_000)
-            .setUserAgent(channel.userAgent ?: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-
-        channel.referrer?.let { ref ->
-            httpFactory.setDefaultRequestProperties(mapOf("Referer" to ref))
+        // Reset temporary auto-fallback constraints when switching to a fresh channel
+        if (selectedQualityId == "auto") {
+            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                .buildUpon()
+                .clearVideoSizeConstraints()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
         }
 
+        val httpFactory = buildHttpFactory(channel.userAgent, channel.referrer)
         val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
-        val mediaItem = MediaItem.fromUri(channel.streamUrl)
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(2))
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(channel.streamUrl)
+            .setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(5_000)
+                    .setMinPlaybackSpeed(0.96f)
+                    .setMaxPlaybackSpeed(1.04f)
+                    .build()
+            )
+            .build()
         val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
 
         exoPlayer.stop()
+        exoPlayer.volume = if (isMuted) 0f else 1f
         exoPlayer.setMediaSource(mediaSource)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
+    }
+
+    // Watchdog: prevent continuous endless buffering on stalled IPTV servers
+    LaunchedEffect(playbackStatus, channel.id, reloadTrigger) {
+        if (playbackStatus == "CONNECTING" || playbackStatus == "BUFFERING" || playbackStatus == "RETRYING") {
+            delay(9_000)
+            if (playbackStatus == "CONNECTING" || playbackStatus == "BUFFERING" || playbackStatus == "RETRYING") {
+                if (selectedQualityId == "auto") {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .setMaxVideoSize(854, 480)
+                        .build()
+                    activeResolutionLabel = "Auto (480p)"
+                }
+                if (exoPlayer.isCurrentMediaItemLive) {
+                    exoPlayer.seekToDefaultPosition()
+                }
+            }
+
+            delay(9_000)
+            if (playbackStatus == "CONNECTING" || playbackStatus == "BUFFERING" || playbackStatus == "RETRYING") {
+                if (autoSwitchOnError && autoHopCount < 3 && !channel.isBackupTestStream) {
+                    autoHopCount += 1
+                    playbackStatus = "SWITCHING"
+                    viewModel.switchToNextChannel()
+                } else {
+                    exoPlayer.pause()
+                    playbackStatus = "STALLED"
+                    errorMessage = "This stream is buffering too slowly or is temporarily overloaded."
+                }
+            }
+        }
     }
 
     DisposableEffect(exoPlayer, channel.id) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
-                    Player.STATE_BUFFERING -> playbackStatus = "BUFFERING"
+                    Player.STATE_BUFFERING -> if (errorMessage == null) playbackStatus = "BUFFERING"
                     Player.STATE_READY -> {
                         playbackStatus = "LIVE"
                         errorMessage = null
@@ -202,6 +303,9 @@ fun PlayerScreen(
                 val subtitles = mutableListOf<SubtitleTrackOption>()
 
                 var activeHeight = 0
+                var hasAnyAudioTrackInStream = false
+                var hasSelectedSupportedAudio = false
+                var unsupportedAudioCodecLabel: String? = null
 
                 tracks.groups.forEachIndexed { groupIdx, group ->
                     when (group.type) {
@@ -227,8 +331,16 @@ fun PlayerScreen(
 
                         C.TRACK_TYPE_AUDIO -> {
                             for (i in 0 until group.length) {
-                                if (!group.isTrackSupported(i)) continue
+                                hasAnyAudioTrackInStream = true
                                 val fmt = group.getTrackFormat(i)
+                                if (!group.isTrackSupported(i)) {
+                                    if (unsupportedAudioCodecLabel == null) {
+                                        unsupportedAudioCodecLabel = fmt.sampleMimeType ?: "unsupported"
+                                    }
+                                    continue
+                                }
+                                val isSel = group.isTrackSelected(i)
+                                if (isSel) hasSelectedSupportedAudio = true
                                 val langCode = fmt.language ?: "und"
                                 val displayLang = if (langCode != "und") {
                                     Locale.forLanguageTag(langCode).getDisplayLanguage(Locale.ENGLISH)
@@ -244,7 +356,7 @@ fun PlayerScreen(
                                         languageCode = langCode,
                                         groupIndex = groupIdx,
                                         trackIndex = i,
-                                        isSelected = group.isTrackSelected(i)
+                                        isSelected = isSel
                                     )
                                 )
                             }
@@ -276,6 +388,26 @@ fun PlayerScreen(
                     }
                 }
 
+                // Auto-select a supported audio track if stream defaulted to none or an unsupported track
+                if (audios.isNotEmpty() && !hasSelectedSupportedAudio) {
+                    val fallbackAudio = audios.first()
+                    val groups = tracks.groups
+                    if (fallbackAudio.groupIndex in groups.indices) {
+                        val mediaGroup = groups[fallbackAudio.groupIndex].mediaTrackGroup
+                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                            .setOverrideForType(TrackSelectionOverride(mediaGroup, fallbackAudio.trackIndex))
+                            .build()
+                    }
+                }
+
+                audioWarning = if (hasAnyAudioTrackInStream && audios.isEmpty()) {
+                    "Audio codec (${unsupportedAudioCodecLabel ?: "surround"}) unsupported on this device"
+                } else {
+                    null
+                }
+
                 detectedQualities = qualities.distinctBy { it.id }.sortedByDescending { it.maxHeight }
                 detectedAudioTracks = audios
                 detectedSubtitleTracks = subtitles
@@ -290,19 +422,22 @@ fun PlayerScreen(
                 if (!retriedAsHls) {
                     retriedAsHls = true
                     playbackStatus = "RETRYING"
-                    val httpFactory = DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                        .setConnectTimeoutMs(12_000)
-                        .setReadTimeoutMs(15_000)
-                        .setUserAgent(channel.userAgent ?: "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-                    channel.referrer?.let { ref ->
-                        httpFactory.setDefaultRequestProperties(mapOf("Referer" to ref))
-                    }
+                    val httpFactory = buildHttpFactory(channel.userAgent, channel.referrer)
                     val hlsItem = MediaItem.Builder()
                         .setUri(channel.streamUrl)
                         .setMimeType(MimeTypes.APPLICATION_M3U8)
+                        .setLiveConfiguration(
+                            MediaItem.LiveConfiguration.Builder()
+                                .setTargetOffsetMs(5_000)
+                                .setMinPlaybackSpeed(0.96f)
+                                .setMaxPlaybackSpeed(1.04f)
+                                .build()
+                        )
                         .build()
-                    exoPlayer.setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(hlsItem))
+                    val mediaSource = DefaultMediaSourceFactory(httpFactory)
+                        .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(2))
+                        .createMediaSource(hlsItem)
+                    exoPlayer.setMediaSource(mediaSource)
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                 } else if (autoSwitchOnError && autoHopCount < 3 && !channel.isBackupTestStream) {
@@ -438,6 +573,7 @@ fun PlayerScreen(
                             player = exoPlayer
                             useController = true
                             keepScreenOn = true
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                             subtitleView?.visibility = if (captionsEnabled) View.VISIBLE else View.GONE
                         }
                     },
@@ -582,6 +718,21 @@ fun PlayerScreen(
 
                         Surface(
                             shape = RoundedCornerShape(8.dp),
+                            color = if (isMuted) arena.liveRed else Color.Black.copy(alpha = 0.72f),
+                            modifier = Modifier
+                                .clickable { isMuted = !isMuted }
+                                .testTag("mute_toggle_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = if (isMuted) "Unmute Audio" else "Mute Audio",
+                                tint = Color.White,
+                                modifier = Modifier.padding(6.dp).size(18.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
                             color = Color.Black.copy(alpha = 0.72f),
                             modifier = Modifier
                                 .clickable {
@@ -601,6 +752,23 @@ fun PlayerScreen(
                                 modifier = Modifier.padding(6.dp).size(18.dp)
                             )
                         }
+                    }
+                }
+
+                if (audioWarning != null && errorMessage == null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.78f),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 44.dp, start = 12.dp, end = 12.dp)
+                    ) {
+                        Text(
+                            text = audioWarning.orEmpty(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = arena.goldAccent,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
                     }
                 }
 
@@ -644,10 +812,18 @@ fun PlayerScreen(
                                 }
                                 OutlinedButton(
                                     onClick = {
+                                        errorMessage = null
+                                        reloadTrigger += 1
+                                    }
+                                ) {
+                                    Text("Retry", color = Color.White)
+                                }
+                                OutlinedButton(
+                                    onClick = {
                                         viewModel.switchToChannel(viewModel.backupStreams.first())
                                     }
                                 ) {
-                                    Text("Test Backup Feed", color = Color.White)
+                                    Text("Backup Feed", color = Color.White)
                                 }
                             }
                         }

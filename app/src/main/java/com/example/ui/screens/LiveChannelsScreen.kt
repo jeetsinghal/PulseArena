@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
@@ -24,8 +26,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.EventStatusState
@@ -56,6 +61,7 @@ fun LiveChannelsScreen(
     val preferHttpsOnly by viewModel.preferHttpsOnly.collectAsStateWithLifecycle()
 
     var searchExpanded by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val liveMatchCount by remember {
         derivedStateOf {
@@ -153,6 +159,8 @@ fun LiveChannelsScreen(
                     placeholder = { Text("Search sports channels...", color = arena.textSecondary) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = arena.accentGreen,
                         unfocusedBorderColor = arena.cardBorder,
@@ -164,6 +172,7 @@ fun LiveChannelsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .onFocusChanged { if (it.isFocused) keyboardController?.show() }
                         .testTag("channel_search_input")
                 )
             }

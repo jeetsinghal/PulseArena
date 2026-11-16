@@ -5,9 +5,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -21,10 +24,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.UiState
@@ -53,6 +62,10 @@ fun SourcesSettingsScreen(
     var customUrl by remember { mutableStateOf("") }
     var urlError by remember { mutableStateOf<String?>(null) }
 
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val scrollState = rememberScrollState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -77,15 +90,16 @@ fun SourcesSettingsScreen(
         },
         containerColor = arena.background
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
+                .padding(innerPadding)
+                .imePadding()
+                .verticalScroll(scrollState)
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item {
-                Surface(
+            Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = arena.surfaceElevated,
                     border = BorderStroke(1.dp, arena.cardBorder)
@@ -148,96 +162,126 @@ fun SourcesSettingsScreen(
                         }
                     }
                 }
-            }
 
-            item {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = arena.surfaceElevated,
-                    border = BorderStroke(1.dp, arena.cardBorder)
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = arena.surfaceElevated,
+                border = BorderStroke(1.dp, arena.cardBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "Custom Stream URL",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = arena.textPrimary
-                        )
-                        Text(
-                            text = "Paste an https:// or http:// .m3u8 live stream URL to open it in the player.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = arena.textSecondary
-                        )
-                        OutlinedTextField(
-                            value = customName,
-                            onValueChange = { customName = it },
-                            label = { Text("Channel Name (optional)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = arena.accentGreen,
-                                unfocusedBorderColor = arena.cardBorder,
-                                focusedTextColor = arena.textPrimary,
-                                unfocusedTextColor = arena.textPrimary
-                            )
-                        )
-                        OutlinedTextField(
-                            value = customUrl,
-                            onValueChange = {
-                                customUrl = it
-                                urlError = null
+                    Text(
+                        text = "Custom Stream URL",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = arena.textPrimary
+                    )
+                    Text(
+                        text = "Paste an https:// or http:// .m3u8 live stream URL to open it in the player.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = arena.textSecondary
+                    )
+                    OutlinedTextField(
+                        value = customName,
+                        onValueChange = { customName = it },
+                        label = { Text("Channel Name (optional)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    keyboardController?.show()
+                                }
                             },
-                            label = { Text("Stream URL (https://...m3u8)") },
-                            singleLine = true,
-                            isError = urlError != null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("custom_stream_url_input"),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = arena.accentGreen,
-                                unfocusedBorderColor = arena.cardBorder,
-                                focusedTextColor = arena.textPrimary,
-                                unfocusedTextColor = arena.textPrimary
-                            )
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = arena.accentGreen,
+                            unfocusedBorderColor = arena.cardBorder,
+                            focusedTextColor = arena.textPrimary,
+                            unfocusedTextColor = arena.textPrimary
                         )
-                        if (urlError != null) {
-                            Text(
-                                text = urlError.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = arena.liveRed
-                            )
-                        }
-                        Button(
-                            onClick = {
+                    )
+                    OutlinedTextField(
+                        value = customUrl,
+                        onValueChange = {
+                            customUrl = it
+                            urlError = null
+                        },
+                        label = { Text("Stream URL (https://...m3u8)") },
+                        singleLine = true,
+                        isError = urlError != null,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                keyboardController?.hide()
                                 viewModel.playCustomUrl(
                                     name = customName,
                                     url = customUrl,
                                     onSuccess = onPlayCustomStream,
                                     onValidationError = { msg -> urlError = msg }
                                 )
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = arena.accentGreen,
-                                contentColor = arena.onAccentGreen
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .minimumInteractiveComponentSize()
-                                .testTag("play_custom_url_button")
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Play Stream", fontWeight = FontWeight.SemiBold)
-                        }
+                            }
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    keyboardController?.show()
+                                }
+                            }
+                            .testTag("custom_stream_url_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = arena.accentGreen,
+                            unfocusedBorderColor = arena.cardBorder,
+                            focusedTextColor = arena.textPrimary,
+                            unfocusedTextColor = arena.textPrimary
+                        )
+                    )
+                    if (urlError != null) {
+                        Text(
+                            text = urlError.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = arena.liveRed
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            keyboardController?.hide()
+                            viewModel.playCustomUrl(
+                                name = customName,
+                                url = customUrl,
+                                onSuccess = onPlayCustomStream,
+                                onValidationError = { msg -> urlError = msg }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = arena.accentGreen,
+                            contentColor = arena.onAccentGreen
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("play_custom_url_button")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Play Stream", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
 
-            item {
-                Surface(
+            Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = arena.surfaceElevated,
                     border = BorderStroke(1.dp, arena.cardBorder)
@@ -274,12 +318,10 @@ fun SourcesSettingsScreen(
                         )
                     }
                 }
-            }
 
-            item {
-                val channelCount = (channelsState as? UiState.Success)?.data?.size ?: 0
-                val eventCount = (eventsState as? UiState.Success)?.data?.size ?: 0
-                Surface(
+            val channelCount = (channelsState as? UiState.Success)?.data?.size ?: 0
+            val eventCount = (eventsState as? UiState.Success)?.data?.size ?: 0
+            Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = arena.surfaceElevated,
                     border = BorderStroke(1.dp, arena.cardBorder)
@@ -315,7 +357,6 @@ fun SourcesSettingsScreen(
                             color = arena.textSecondary
                         )
                     }
-                }
             }
         }
     }

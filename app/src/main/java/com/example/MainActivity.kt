@@ -1,5 +1,6 @@
 package com.example
 
+import android.media.AudioManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -40,6 +41,9 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Route hardware volume keys to media playback audio.
+        volumeControlStream = AudioManager.STREAM_MUSIC
 
         // Configure Firebase App Check before UI, ViewModels, or Firebase operations.
         configureAppCheck(this, intent)
