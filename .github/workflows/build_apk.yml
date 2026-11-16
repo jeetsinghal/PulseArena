@@ -47,6 +47,53 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Ensure app/google-services.json exists
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -f app/google-services.json ]; then
+            echo "Using committed app/google-services.json."
+          elif [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "Wrote app/google-services.json from GOOGLE_SERVICES_JSON secret."
+          elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+            echo "Wrote app/google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret."
+          else
+            echo "::warning::app/google-services.json is missing and neither GOOGLE_SERVICES_JSON nor GOOGLE_SERVICES_JSON_BASE64 secret is set. Using CI placeholder so APK builds, but Firebase AI translation requires your real google-services.json."
+            cat <<'EOF' > app/google-services.json
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "pulsearena-ci-placeholder"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.chadstream.livexyz"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "CI_PLACEHOLDER_API_KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          fi
+
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
