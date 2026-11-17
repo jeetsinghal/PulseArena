@@ -16,6 +16,7 @@ enum class ThemeMode(val label: String) {
 interface ChannelDirectorySource {
     fun getCachedChannels(): List<LiveChannel> = emptyList()
     suspend fun fetchChannels(forceRefresh: Boolean = false): Result<List<LiveChannel>>
+    suspend fun fetchPlaylist(playlistUrl: String): Result<List<LiveChannel>> = Result.failure(UnsupportedOperationException())
 }
 
 interface ScoreboardDataSource {
@@ -44,6 +45,12 @@ interface UserPreferencesStore {
     suspend fun setPreferHttpsOnly(enabled: Boolean)
     suspend fun setShowScoreHudOverlay(enabled: Boolean)
     suspend fun addCustomChannel(channel: LiveChannel)
+    suspend fun addCustomChannels(channels: List<LiveChannel>)
+}
+
+sealed interface CustomImportOutcome {
+    data class SingleStream(val channel: LiveChannel) : CustomImportOutcome
+    data class PlaylistImported(val channels: List<LiveChannel>) : CustomImportOutcome
 }
 
 interface SportsDataRepository {
@@ -64,6 +71,11 @@ interface SportsDataRepository {
         url: String,
         sport: SportCategory = SportCategory.ALL
     ): Result<LiveChannel>
+    suspend fun importCustomStreamOrPlaylist(
+        name: String,
+        url: String,
+        sport: SportCategory = SportCategory.ALL
+    ): Result<CustomImportOutcome>
 
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun toggleDarkLight(currentlyDark: Boolean)

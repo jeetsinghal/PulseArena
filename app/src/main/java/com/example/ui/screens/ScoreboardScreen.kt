@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,8 +21,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.EventStatusState
@@ -65,6 +68,14 @@ fun ScoreboardScreen(
         )
     }
 
+    val topAuroraGradient = Brush.verticalGradient(
+        colors = listOf(
+            arena.gradientStart.copy(alpha = if (arena.isDark) 0.24f else 0.10f),
+            arena.gradientMid.copy(alpha = if (arena.isDark) 0.12f else 0.05f),
+            arena.background
+        )
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,7 +83,8 @@ fun ScoreboardScreen(
                     Text(
                         text = "Matches",
                         style = MaterialTheme.typography.titleLarge,
-                        color = arena.textPrimary
+                        color = arena.textPrimary,
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 actions = {
@@ -114,14 +126,16 @@ fun ScoreboardScreen(
                         Icon(Icons.Default.Settings, contentDescription = "Settings", tint = arena.textPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = arena.background)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
-        containerColor = arena.background
+        containerColor = arena.background,
+        modifier = Modifier.background(topAuroraGradient)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(topAuroraGradient)
                 .padding(innerPadding)
         ) {
             AnimatedVisibility(

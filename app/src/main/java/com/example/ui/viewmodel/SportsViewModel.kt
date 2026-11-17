@@ -2,6 +2,8 @@ package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ChannelCategory
+import com.example.data.ChannelFeedFilter
 import com.example.data.EventStatusState
 import com.example.data.EventSummaryDetail
 import com.example.data.LiveChannel
@@ -9,6 +11,7 @@ import com.example.data.SportCategory
 import com.example.data.SportEvent
 import com.example.data.TranslationLanguage
 import com.example.data.UiState
+import com.example.data.abstraction.CustomImportOutcome
 import com.example.data.abstraction.LiveCaptionTranslator
 import com.example.data.abstraction.SportsDataRepository
 import com.example.data.abstraction.ThemeMode
@@ -42,8 +45,11 @@ class SportsViewModel(
     private val _isRefreshingScores = MutableStateFlow(false)
     val isRefreshingScores: StateFlow<Boolean> = _isRefreshingScores.asStateFlow()
 
-    private val _selectedChannelSport = MutableStateFlow(SportCategory.ALL)
-    val selectedChannelSport: StateFlow<SportCategory> = _selectedChannelSport.asStateFlow()
+    private val _selectedChannelCategory = MutableStateFlow(ChannelCategory.ALL)
+    val selectedChannelCategory: StateFlow<ChannelCategory> = _selectedChannelCategory.asStateFlow()
+
+    private val _selectedChannelFilter = MutableStateFlow(ChannelFeedFilter.ALL)
+    val selectedChannelFilter: StateFlow<ChannelFeedFilter> = _selectedChannelFilter.asStateFlow()
 
     private val _selectedScoreSport = MutableStateFlow(SportCategory.ALL)
     val selectedScoreSport: StateFlow<SportCategory> = _selectedScoreSport.asStateFlow()
@@ -182,8 +188,12 @@ class SportsViewModel(
         }
     }
 
-    fun setChannelSportFilter(category: SportCategory) {
-        _selectedChannelSport.value = category
+    fun setChannelCategory(category: ChannelCategory) {
+        _selectedChannelCategory.value = category
+    }
+
+    fun setChannelFeedFilter(filter: ChannelFeedFilter) {
+        _selectedChannelFilter.value = filter
     }
 
     fun setChannelSearchQuery(query: String) {
@@ -277,8 +287,10 @@ class SportsViewModel(
         if (list.isEmpty()) return null
         val current = _activeChannel.value ?: return list.first()
 
-        val sameSport = list.filter { it.sport == current.sport && !it.isGeoRestrictedHint }
-        val pool = if (sameSport.size > 1) sameSport else list.filter { !it.isGeoRestrictedHint }.ifEmpty { list }
+        val sameCategory = list.filter {
+            it.channelCategory == current.channelCategory && !it.isGeoRestrictedHint
+        }
+        val pool = if (sameCategory.size > 1) sameCategory else list.filter { !it.isGeoRestrictedHint }.ifEmpty { list }
         val idx = pool.indexOfFirst { it.id == current.id }
         val next = if (idx == -1 || idx + 1 >= pool.size) pool.first() else pool[idx + 1]
         _activeChannel.value = next
@@ -289,18 +301,29 @@ class SportsViewModel(
     fun playCustomUrl(
         name: String,
         url: String,
-        onSuccess: () -> Unit,
+        onPlaySingle: () -> Unit,
+        onPlaylistImported: (Int) -> Unit,
         onValidationError: (String) -> Unit
     ) {
         viewModelScope.launch {
-            repository.addCustomStream(name, url).onSuccess { channel ->
-                _activeChannel.value = channel
-                _activeEvent.value = null
-                _activeEventSummary.value = null
-                loadChannels(forceRefresh = false)
-                onSuccess()
+            repository.importCustomStreamOrPlaylist(name, url).onSuccess { outcome ->
+                when (outcome) {
+                    is CustomImportOutcome.SingleStream -> {
+                        _activeChannel.value = outcome.channel
+                        _activeEvent.value = null
+                        _activeEventSummary.value = null
+                        loadChannels(forceRefresh = false)
+                        onPlaySingle()
+                    }
+                    is CustomImportOutcome.PlaylistImported -> {
+                        val existing = (_channelsState.value as? UiState.Success)?.data.orEmpty()
+                        val merged = (outcome.channels + existing).distinctBy { it.streamUrl }
+                        _channelsState.value = UiState.Success(merged)
+                        onPlaylistImported(outcome.channels.size)
+                    }
+                }
             }.onFailure { err ->
-                onValidationError(err.message ?: "Invalid stream URL")
+                onValidationError(err.message ?: "Invalid stream or playlist URL")
             }
         }
     }
@@ -356,7 +379,10 @@ class SportsViewModel(
         channel: LiveChannel?
     ): String? {
         if (event == null) {
-            return channel?.let { "Live broadcast: ${it.name} (${it.sport.displayName})" }
+            return channel?.let {
+                val tag = if (it.sport != SportCategory.ALL) it.sport.displayName else it.channelCategory.displayName
+                "Live broadcast: ${it.name} ($tag)"
+            }
         }
         val latestPlay = summary?.recentPlays?.firstOrNull()
         if (!latestPlay.isNullOrBlank()) return latestPlay

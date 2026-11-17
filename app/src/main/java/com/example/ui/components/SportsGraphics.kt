@@ -45,9 +45,34 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.ChannelCategory
 import com.example.data.LiveChannel
 import com.example.data.SportCategory
 import com.example.ui.theme.arenaColors
+
+fun channelCategoryIconFor(category: ChannelCategory): ImageVector = when (category) {
+    ChannelCategory.ALL -> Icons.Default.LiveTv
+    ChannelCategory.SPORTS -> Icons.Default.SportsCricket
+    ChannelCategory.NEWS -> Icons.Default.Newspaper
+    ChannelCategory.MOVIES -> Icons.Default.Movie
+    ChannelCategory.SONGS -> Icons.Default.MusicNote
+    ChannelCategory.KIDS -> Icons.Default.ChildCare
+    ChannelCategory.OTT -> Icons.Default.SmartDisplay
+}
+
+@Composable
+fun channelCategoryAccentColor(category: ChannelCategory): Color {
+    val arena = MaterialTheme.arenaColors
+    return when (category) {
+        ChannelCategory.ALL -> arena.accentGreen
+        ChannelCategory.SPORTS -> arena.accentGreen
+        ChannelCategory.NEWS -> arena.sportBlue
+        ChannelCategory.MOVIES -> Color(0xFFF43F5E)
+        ChannelCategory.SONGS -> Color(0xFFA855F7)
+        ChannelCategory.KIDS -> arena.goldAccent
+        ChannelCategory.OTT -> arena.secondaryAccent
+    }
+}
 
 fun sportIconFor(category: SportCategory): ImageVector = when (category) {
     SportCategory.ALL -> Icons.Default.LiveTv
@@ -330,12 +355,21 @@ fun FeaturedArenaHeroCard(
     )
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, arena.cardBorder),
-        shadowElevation = if (arena.isDark) 0.dp else 3.dp,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            width = 1.2.dp,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    arena.gradientStart.copy(alpha = 0.85f),
+                    arena.gradientMid.copy(alpha = 0.75f),
+                    arena.gradientEnd.copy(alpha = 0.85f)
+                )
+            )
+        ),
+        shadowElevation = if (arena.isDark) 0.dp else 4.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(168.dp)
+            .height(172.dp)
             .then(
                 if (featuredChannel != null) {
                     Modifier.pressableCardClick { onWatchFeatured(featuredChannel) }
@@ -348,7 +382,7 @@ fun FeaturedArenaHeroCard(
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
                 painter = painterResource(id = R.drawable.img_arena_hero),
-                contentDescription = "Live sports stadium broadcast arena",
+                contentDescription = "Live broadcast arena",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -356,11 +390,11 @@ fun FeaturedArenaHeroCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.horizontalGradient(
+                        Brush.linearGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.86f),
-                                Color.Black.copy(alpha = 0.56f),
-                                Color.Black.copy(alpha = 0.32f)
+                                arena.gradientStart.copy(alpha = 0.82f),
+                                arena.gradientMid.copy(alpha = 0.62f),
+                                Color(0xCC070B14)
                             )
                         )
                     )
@@ -435,10 +469,15 @@ fun FeaturedArenaHeroCard(
                         )
                         Text(
                             text = featuredChannel?.let {
-                                "${it.sport.displayName} • ${it.qualityLabel} Live Stream"
-                            } ?: "Global live streams with captions & translation",
+                                val categoryTag = if (it.sport != SportCategory.ALL) {
+                                    it.sport.displayName
+                                } else {
+                                    it.channelCategory.displayName
+                                }
+                                "$categoryTag • ${it.qualityLabel} Live Stream"
+                            } ?: "Indian & Global Sports, News, Movies, Kids & OTT",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.82f),
+                            color = Color.White.copy(alpha = 0.86f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -481,12 +520,21 @@ fun ScoreSpotlightBanner(
 ) {
     val arena = MaterialTheme.arenaColors
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, arena.cardBorder),
-        shadowElevation = if (arena.isDark) 0.dp else 2.dp,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            width = 1.2.dp,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    arena.gradientStart.copy(alpha = 0.75f),
+                    arena.gradientMid.copy(alpha = 0.7f),
+                    arena.gradientEnd.copy(alpha = 0.75f)
+                )
+            )
+        ),
+        shadowElevation = if (arena.isDark) 0.dp else 3.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(112.dp)
+            .height(114.dp)
             .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -500,10 +548,11 @@ fun ScoreSpotlightBanner(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
+                        Brush.linearGradient(
                             colors = listOf(
-                                Color(0xCC0A0D12),
-                                Color(0xE60A0D12)
+                                arena.gradientStart.copy(alpha = 0.84f),
+                                arena.gradientMid.copy(alpha = 0.78f),
+                                Color(0xE0070B14)
                             )
                         )
                     )

@@ -61,6 +61,8 @@ fun SourcesSettingsScreen(
     var customName by remember { mutableStateOf("") }
     var customUrl by remember { mutableStateOf("") }
     var urlError by remember { mutableStateOf<String?>(null) }
+    var importStatus by remember { mutableStateOf<String?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -126,9 +128,9 @@ fun SourcesSettingsScreen(
                             ThemePreviewOptionCard(
                                 label = "Dark",
                                 icon = Icons.Default.DarkMode,
-                                previewBg = Color(0xFF0A0D12),
-                                previewCard = Color(0xFF1A202C),
-                                previewAccent = Color(0xFF1ED760),
+                                previewBg = Color(0xFF070B14),
+                                previewCard = Color(0xFF161F38),
+                                previewAccent = Color(0xFF00E5A3),
                                 selected = themeMode == ThemeMode.DARK,
                                 onClick = { viewModel.setThemeMode(ThemeMode.DARK) },
                                 modifier = Modifier
@@ -138,9 +140,9 @@ fun SourcesSettingsScreen(
                             ThemePreviewOptionCard(
                                 label = "Light",
                                 icon = Icons.Default.LightMode,
-                                previewBg = Color(0xFFF3F6FA),
+                                previewBg = Color(0xFFF2F5FC),
                                 previewCard = Color(0xFFFFFFFF),
-                                previewAccent = Color(0xFF0D9F4F),
+                                previewAccent = Color(0xFF059669),
                                 selected = themeMode == ThemeMode.LIGHT,
                                 onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
                                 modifier = Modifier
@@ -173,12 +175,12 @@ fun SourcesSettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Custom Stream URL",
+                        text = "Import Channel or Playlist URL",
                         style = MaterialTheme.typography.titleMedium,
                         color = arena.textPrimary
                     )
                     Text(
-                        text = "Paste an https:// or http:// .m3u8 live stream URL to open it in the player.",
+                        text = "Paste a direct .m3u8 live stream URL to play, or a public .m3u playlist URL to import its channels into Live TV.",
                         style = MaterialTheme.typography.bodySmall,
                         color = arena.textSecondary
                     )
@@ -213,8 +215,9 @@ fun SourcesSettingsScreen(
                         onValueChange = {
                             customUrl = it
                             urlError = null
+                            importStatus = null
                         },
-                        label = { Text("Stream URL (https://...m3u8)") },
+                        label = { Text("Stream (.m3u8) or Playlist (.m3u) URL") },
                         singleLine = true,
                         isError = urlError != null,
                         keyboardOptions = KeyboardOptions(
@@ -224,11 +227,24 @@ fun SourcesSettingsScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 keyboardController?.hide()
+                                isImporting = true
+                                urlError = null
+                                importStatus = null
                                 viewModel.playCustomUrl(
                                     name = customName,
                                     url = customUrl,
-                                    onSuccess = onPlayCustomStream,
-                                    onValidationError = { msg -> urlError = msg }
+                                    onPlaySingle = {
+                                        isImporting = false
+                                        onPlayCustomStream()
+                                    },
+                                    onPlaylistImported = { count ->
+                                        isImporting = false
+                                        importStatus = "Imported $count channel(s) into Live TV."
+                                    },
+                                    onValidationError = { msg ->
+                                        isImporting = false
+                                        urlError = msg
+                                    }
                                 )
                             }
                         ),
@@ -254,14 +270,36 @@ fun SourcesSettingsScreen(
                             color = arena.liveRed
                         )
                     }
+                    if (importStatus != null) {
+                        Text(
+                            text = importStatus.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = arena.accentGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                     Button(
+                        enabled = !isImporting,
                         onClick = {
                             keyboardController?.hide()
+                            isImporting = true
+                            urlError = null
+                            importStatus = null
                             viewModel.playCustomUrl(
                                 name = customName,
                                 url = customUrl,
-                                onSuccess = onPlayCustomStream,
-                                onValidationError = { msg -> urlError = msg }
+                                onPlaySingle = {
+                                    isImporting = false
+                                    onPlayCustomStream()
+                                },
+                                onPlaylistImported = { count ->
+                                    isImporting = false
+                                    importStatus = "Imported $count channel(s) into Live TV."
+                                },
+                                onValidationError = { msg ->
+                                    isImporting = false
+                                    urlError = msg
+                                }
                             )
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -274,9 +312,19 @@ fun SourcesSettingsScreen(
                             .minimumInteractiveComponentSize()
                             .testTag("play_custom_url_button")
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Play Stream", fontWeight = FontWeight.SemiBold)
+                        if (isImporting) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = arena.onAccentGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Importing...", fontWeight = FontWeight.SemiBold)
+                        } else {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Import / Play Stream", fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }

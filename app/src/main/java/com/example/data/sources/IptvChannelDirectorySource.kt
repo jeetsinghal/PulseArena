@@ -1,5 +1,6 @@
 package com.example.data.sources
 
+import com.example.data.ChannelCategory
 import com.example.data.LiveChannel
 import com.example.data.M3uParser
 import com.example.data.SportCategory
@@ -47,43 +48,127 @@ class IptvChannelDirectorySource(
             }
 
             runCatching {
-                val (globalChannels, indianChannels) = supervisorScope {
-                    val globalDeferred = async {
-                        runCatching {
-                            val m3u = downloadM3u(IPTV_SPORTS_M3U_URL, forceRefresh)
-                            M3uParser.parse(m3u, filterSportsOnly = false, markAllAsIndian = false)
-                        }
-                    }
+                val results = supervisorScope {
                     val indiaDeferred = async {
                         runCatching {
                             val m3u = downloadM3u(IPTV_INDIA_M3U_URL, forceRefresh)
-                            M3uParser.parse(m3u, filterSportsOnly = true, markAllAsIndian = true)
+                            M3uParser.parse(
+                                m3u,
+                                markAllAsIndian = true,
+                                excludeUnplayableOrGeoBlocked = true
+                            )
                         }
                     }
-                    Pair(globalDeferred.await(), indiaDeferred.await())
+                    val hindiDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_HINDI_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                markAllAsIndian = true,
+                                defaultLanguageTag = "Hindi",
+                                excludeUnplayableOrGeoBlocked = true
+                            )
+                        }
+                    }
+                    val sportsDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_SPORTS_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                keepOnlyIndianOrEnglishSports = true,
+                                defaultChannelCategory = ChannelCategory.SPORTS,
+                                excludeUnplayableOrGeoBlocked = true
+                            )
+                        }
+                    }
+                    val moviesDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_MOVIES_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                keepOnlyIndianOrEnglishSports = true,
+                                defaultChannelCategory = ChannelCategory.MOVIES,
+                                excludeUnplayableOrGeoBlocked = true
+                            ).filter { it.isHttps }.take(45)
+                        }
+                    }
+                    val musicDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_MUSIC_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                keepOnlyIndianOrEnglishSports = true,
+                                defaultChannelCategory = ChannelCategory.SONGS,
+                                excludeUnplayableOrGeoBlocked = true
+                            ).filter { it.isHttps }.take(45)
+                        }
+                    }
+                    val kidsDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_KIDS_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                keepOnlyIndianOrEnglishSports = true,
+                                defaultChannelCategory = ChannelCategory.KIDS,
+                                excludeUnplayableOrGeoBlocked = true
+                            ).filter { it.isHttps }.take(40)
+                        }
+                    }
+                    val englishOttDeferred = async {
+                        runCatching {
+                            val m3u = downloadM3u(IPTV_ENGLISH_M3U_URL, forceRefresh)
+                            M3uParser.parse(
+                                m3u,
+                                defaultLanguageTag = "English",
+                                keepOnlyRelevantEnglish = true,
+                                excludeUnplayableOrGeoBlocked = true
+                            ).filter { it.isHttps }.take(90)
+                        }
+                    }
+
+                    listOf(
+                        indiaDeferred.await(),
+                        hindiDeferred.await(),
+                        sportsDeferred.await(),
+                        moviesDeferred.await(),
+                        musicDeferred.await(),
+                        kidsDeferred.await(),
+                        englishOttDeferred.await()
+                    )
                 }
 
-                val globalList = globalChannels.getOrDefault(emptyList())
-                val indiaList = indianChannels.getOrDefault(emptyList())
+                val indiaList = results[0].getOrDefault(emptyList())
+                val hindiList = results[1].getOrDefault(emptyList())
+                val sportsList = results[2].getOrDefault(emptyList())
+                val moviesList = results[3].getOrDefault(emptyList())
+                val musicList = results[4].getOrDefault(emptyList())
+                val kidsList = results[5].getOrDefault(emptyList())
+                val englishOttList = results[6].getOrDefault(emptyList())
 
-                if (globalList.isEmpty() && indiaList.isEmpty()) {
-                    throw (globalChannels.exceptionOrNull()
-                        ?: indianChannels.exceptionOrNull()
-                        ?: IllegalStateException("Unable to load live sports channels"))
+                if (indiaList.isEmpty() && hindiList.isEmpty() && sportsList.isEmpty() &&
+                    moviesList.isEmpty() && musicList.isEmpty() && kidsList.isEmpty() && englishOttList.isEmpty()
+                ) {
+                    throw (results.firstNotNullOfOrNull { it.exceptionOrNull() }
+                        ?: IllegalStateException("Unable to load live channels"))
                 }
 
-                // Merge & deduplicate by streamUrl, preserving Indian origin flag if present in either feed
                 val byUrl = LinkedHashMap<String, LiveChannel>()
-                indiaList.forEach { ch ->
-                    byUrl[ch.streamUrl] = ch
+                (indiaList + hindiList).forEach { ch ->
+                    byUrl.putIfAbsent(ch.streamUrl, ch)
                 }
-                globalList.forEach { ch ->
+                (sportsList + moviesList + musicList + kidsList).forEach { ch ->
                     val existing = byUrl[ch.streamUrl]
                     if (existing == null) {
                         byUrl[ch.streamUrl] = ch
-                    } else if (!existing.isIndianOrigin && ch.isIndianOrigin) {
-                        byUrl[ch.streamUrl] = existing.copy(isIndianOrigin = true)
+                    } else if (existing.sport == SportCategory.ALL && ch.sport != SportCategory.ALL) {
+                        byUrl[ch.streamUrl] = existing.copy(
+                            sport = ch.sport,
+                            channelCategory = ChannelCategory.SPORTS
+                        )
                     }
+                }
+                englishOttList.forEach { ch ->
+                    byUrl.putIfAbsent(ch.streamUrl, ch)
                 }
 
                 val merged = M3uParser.sortChannels(byUrl.values.toList())
@@ -91,6 +176,25 @@ class IptvChannelDirectorySource(
                 lastFetchMs = System.currentTimeMillis()
                 writeDiskSnapshot(merged)
                 merged
+            }
+        }
+
+    override suspend fun fetchPlaylist(playlistUrl: String): Result<List<LiveChannel>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val m3u = downloadM3u(playlistUrl, forceRefresh = true)
+                if (!m3u.contains("#EXTINF:", ignoreCase = true) ||
+                    m3u.contains("#EXT-X-TARGETDURATION", ignoreCase = true) ||
+                    m3u.contains("#EXT-X-STREAM-INF", ignoreCase = true)
+                ) {
+                    return@runCatching emptyList()
+                }
+                M3uParser.parse(
+                    m3u,
+                    filterSportsOnly = false,
+                    markAllAsIndian = false,
+                    excludeUnplayableOrGeoBlocked = true
+                )
             }
         }
 
@@ -136,6 +240,8 @@ class IptvChannelDirectorySource(
                         put("isGeoRestrictedHint", ch.isGeoRestrictedHint)
                         put("qualityLabel", ch.qualityLabel)
                         put("isIndianOrigin", ch.isIndianOrigin)
+                        put("languageTag", ch.languageTag)
+                        put("channelCategory", ch.channelCategory.name)
                     }
                 )
             }
@@ -152,22 +258,33 @@ class IptvChannelDirectorySource(
                 for (i in 0 until arr.length()) {
                     val obj = arr.optJSONObject(i) ?: continue
                     val streamUrl = obj.optString("streamUrl").takeIf { it.isNotBlank() } ?: continue
+                    if (!M3uParser.isPlayableDirectStreamUrl(streamUrl)) continue
                     val sport = SportCategory.entries.firstOrNull { it.name == obj.optString("sport") }
                         ?: SportCategory.ALL
+                    val category = ChannelCategory.entries.firstOrNull {
+                        it.name == obj.optString("channelCategory")
+                    } ?: M3uParser.classifyChannelCategory(
+                        name = obj.optString("name"),
+                        group = obj.optString("groupTitle", "Live TV"),
+                        streamUrl = streamUrl,
+                        sport = sport
+                    )
                     add(
                         LiveChannel(
                             id = obj.optString("id"),
                             name = obj.optString("name"),
                             streamUrl = streamUrl,
                             logoUrl = obj.optString("logoUrl").takeIf { it.isNotBlank() },
-                            groupTitle = obj.optString("groupTitle", "Sports"),
+                            groupTitle = obj.optString("groupTitle", "Live TV"),
                             sport = sport,
                             userAgent = obj.optString("userAgent").takeIf { it.isNotBlank() },
                             referrer = obj.optString("referrer").takeIf { it.isNotBlank() },
                             isHttps = obj.optBoolean("isHttps", streamUrl.startsWith("https://", true)),
                             isGeoRestrictedHint = obj.optBoolean("isGeoRestrictedHint", false),
                             qualityLabel = obj.optString("qualityLabel", "LIVE"),
-                            isIndianOrigin = obj.optBoolean("isIndianOrigin", false)
+                            isIndianOrigin = obj.optBoolean("isIndianOrigin", false),
+                            languageTag = obj.optString("languageTag", ""),
+                            channelCategory = category
                         )
                     )
                 }
@@ -177,9 +294,14 @@ class IptvChannelDirectorySource(
 
     private companion object {
         const val IPTV_SPORTS_M3U_URL = "https://iptv-org.github.io/iptv/categories/sports.m3u"
+        const val IPTV_MOVIES_M3U_URL = "https://iptv-org.github.io/iptv/categories/movies.m3u"
+        const val IPTV_MUSIC_M3U_URL = "https://iptv-org.github.io/iptv/categories/music.m3u"
+        const val IPTV_KIDS_M3U_URL = "https://iptv-org.github.io/iptv/categories/kids.m3u"
         const val IPTV_INDIA_M3U_URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
-        const val SNAPSHOT_FILE_NAME = "channels_snapshot_v2.json"
+        const val IPTV_HINDI_M3U_URL = "https://iptv-org.github.io/iptv/languages/hin.m3u"
+        const val IPTV_ENGLISH_M3U_URL = "https://iptv-org.github.io/iptv/languages/eng.m3u"
+        const val SNAPSHOT_FILE_NAME = "channels_snapshot_v4.json"
         const val MEMORY_TTL_MS = 3 * 60 * 1000L
-        const val MAX_DISK_SNAPSHOT_ITEMS = 150
+        const val MAX_DISK_SNAPSHOT_ITEMS = 450
     }
 }

@@ -35,7 +35,11 @@ data class ArenaColors(
     val accentGreenVariant: Color,
     val liveRed: Color,
     val sportBlue: Color,
-    val goldAccent: Color
+    val goldAccent: Color,
+    val secondaryAccent: Color,
+    val gradientStart: Color,
+    val gradientMid: Color,
+    val gradientEnd: Color
 )
 
 private val DarkArenaColors = ArenaColors(
@@ -48,11 +52,15 @@ private val DarkArenaColors = ArenaColors(
     textSecondary = DarkTextSecondary,
     cardBorder = DarkCardBorder,
     accentGreen = NeonGreen,
-    onAccentGreen = Color(0xFF052E16),
+    onAccentGreen = Color(0xFF022C22),
     accentGreenVariant = NeonGreenVariant,
     liveRed = LiveRed,
     sportBlue = VividBlueDark,
-    goldAccent = GoldAccentDark
+    goldAccent = GoldAccentDark,
+    secondaryAccent = AuroraViolet,
+    gradientStart = AuroraGradientStartDark,
+    gradientMid = AuroraGradientMidDark,
+    gradientEnd = AuroraGradientEndDark
 )
 
 private val LightArenaColors = ArenaColors(
@@ -66,10 +74,14 @@ private val LightArenaColors = ArenaColors(
     cardBorder = LightCardBorder,
     accentGreen = StadiumGreenLight,
     onAccentGreen = Color.White,
-    accentGreenVariant = Color(0xFFDCFCE7),
+    accentGreenVariant = Color(0xFFD1FAE5),
     liveRed = LiveRedLight,
     sportBlue = VividBlue,
-    goldAccent = GoldAccent
+    goldAccent = GoldAccent,
+    secondaryAccent = AuroraVioletLight,
+    gradientStart = AuroraGradientStartLight,
+    gradientMid = AuroraGradientMidLight,
+    gradientEnd = AuroraGradientEndLight
 )
 
 val LocalArenaColors = staticCompositionLocalOf { DarkArenaColors }
@@ -80,12 +92,12 @@ val MaterialTheme.arenaColors: ArenaColors
 
 private val DarkColorScheme = darkColorScheme(
     primary = NeonGreen,
-    onPrimary = Color(0xFF052E16),
+    onPrimary = Color(0xFF022C22),
     primaryContainer = NeonGreenVariant,
     onPrimaryContainer = DarkTextPrimary,
-    secondary = VividBlueDark,
-    onSecondary = DarkBackground,
-    tertiary = GoldAccentDark,
+    secondary = AuroraViolet,
+    onSecondary = Color.White,
+    tertiary = VividBlueDark,
     background = DarkBackground,
     onBackground = DarkTextPrimary,
     surface = DarkSurface,
@@ -102,9 +114,9 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD1FAE5),
     onPrimaryContainer = Color(0xFF064E3B),
-    secondary = VividBlue,
+    secondary = AuroraVioletLight,
     onSecondary = Color.White,
-    tertiary = GoldAccent,
+    tertiary = VividBlue,
     background = LightBackground,
     onBackground = LightTextPrimary,
     surface = LightSurface,
@@ -138,6 +150,9 @@ fun PulseArenaTheme(
     val textSecondary by animateColorAsState(targetArena.textSecondary, animSpec, label = "theme_text_secondary")
     val border by animateColorAsState(targetArena.cardBorder, animSpec, label = "theme_border")
     val accent by animateColorAsState(targetArena.accentGreen, animSpec, label = "theme_accent")
+    val gradStart by animateColorAsState(targetArena.gradientStart, animSpec, label = "theme_grad_start")
+    val gradMid by animateColorAsState(targetArena.gradientMid, animSpec, label = "theme_grad_mid")
+    val gradEnd by animateColorAsState(targetArena.gradientEnd, animSpec, label = "theme_grad_end")
 
     val animatedArena = targetArena.copy(
         background = bg,
@@ -147,7 +162,10 @@ fun PulseArenaTheme(
         textPrimary = textPrimary,
         textSecondary = textSecondary,
         cardBorder = border,
-        accentGreen = accent
+        accentGreen = accent,
+        gradientStart = gradStart,
+        gradientMid = gradMid,
+        gradientEnd = gradEnd
     )
 
     val baseScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme

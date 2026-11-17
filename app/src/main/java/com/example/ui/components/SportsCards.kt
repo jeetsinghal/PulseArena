@@ -19,6 +19,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -27,8 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.data.ChannelCategory
 import com.example.data.EventStatusState
 import com.example.data.LiveChannel
+import com.example.data.SportCategory
 import com.example.data.SportEvent
 import com.example.ui.theme.arenaColors
 
@@ -39,7 +43,11 @@ fun LiveChannelCard(
     modifier: Modifier = Modifier
 ) {
     val arena = MaterialTheme.arenaColors
-    val accent = sportAccentColor(channel.sport)
+    val accent = if (channel.sport != SportCategory.ALL) {
+        sportAccentColor(channel.sport)
+    } else {
+        channelCategoryAccentColor(channel.channelCategory)
+    }
     val context = LocalContext.current
 
     Surface(
@@ -78,8 +86,23 @@ fun LiveChannelCard(
                             .padding(6.dp),
                         contentScale = ContentScale.Fit
                     )
-                } else {
+                } else if (channel.sport != SportCategory.ALL) {
                     SportVisualBadge(category = channel.sport, size = 50.dp)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(accent.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = channelCategoryIconFor(channel.channelCategory),
+                            contentDescription = channel.channelCategory.displayName,
+                            tint = accent,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                 }
             }
 
@@ -100,12 +123,33 @@ fun LiveChannelCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     LiveSignalBars(color = accent, modifier = Modifier.size(width = 12.dp, height = 10.dp))
+                    if (channel.languageTag.isNotBlank()) {
+                        Surface(
+                            color = arena.accentGreen.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(5.dp)
+                        ) {
+                            Text(
+                                text = channel.languageTag.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = arena.accentGreen,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                     Surface(
                         color = accent.copy(alpha = 0.14f),
                         shape = RoundedCornerShape(5.dp)
                     ) {
                         Text(
-                            text = channel.sport.displayName,
+                            text = if (channel.sport != SportCategory.ALL) {
+                                channel.sport.displayName
+                            } else {
+                                when (channel.channelCategory) {
+                                    ChannelCategory.OTT -> "OTT"
+                                    else -> channel.channelCategory.displayName
+                                }
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = accent,
                             fontWeight = FontWeight.SemiBold,
@@ -114,13 +158,13 @@ fun LiveChannelCard(
                     }
                     if (channel.isIndianOrigin) {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFFFF8F00).copy(alpha = 0.16f),
+                            color = arena.goldAccent.copy(alpha = 0.16f),
                             shape = RoundedCornerShape(5.dp)
                         ) {
                             Text(
                                 text = "INDIA",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = androidx.compose.ui.graphics.Color(0xFFFF8F00),
+                                color = arena.goldAccent,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
@@ -139,23 +183,28 @@ fun LiveChannelCard(
                 }
             }
 
-            Surface(
-                shape = CircleShape,
-                color = arena.accentGreen.copy(alpha = 0.14f),
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                arena.gradientStart.copy(alpha = 0.28f),
+                                arena.gradientEnd.copy(alpha = 0.28f)
+                            )
+                        )
+                    )
                     .clickable(onClick = onPlay)
                     .minimumInteractiveComponentSize()
                     .testTag("play_channel_${channel.id}")
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Watch ${channel.name}",
-                        tint = arena.accentGreen
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Watch ${channel.name}",
+                    tint = arena.accentGreen
+                )
             }
         }
     }

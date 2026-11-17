@@ -7,7 +7,9 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.data.ChannelCategory
 import com.example.data.LiveChannel
+import com.example.data.M3uParser
 import com.example.data.SportCategory
 import com.example.data.abstraction.ThemeMode
 import com.example.data.abstraction.UserPreferencesStore
@@ -93,7 +95,17 @@ class DataStorePreferencesStore(
     }
 
     override suspend fun addCustomChannel(channel: LiveChannel) {
-        val updated = listOf(channel) + _customChannels.value
+        addCustomChannels(listOf(channel))
+    }
+
+    override suspend fun addCustomChannels(channels: List<LiveChannel>) {
+        if (channels.isEmpty()) return
+        val combined = LinkedHashMap<String, LiveChannel>()
+        channels.forEach { combined[it.streamUrl] = it }
+        _customChannels.value.forEach { existing ->
+            combined.putIfAbsent(existing.streamUrl, existing)
+        }
+        val updated = combined.values.take(60)
         _customChannels.value = updated
         context.arenaDataStore.edit {
             it[Keys.CUSTOM_CHANNELS] = encodeCustomChannels(updated)
@@ -102,7 +114,7 @@ class DataStorePreferencesStore(
 
     private fun encodeCustomChannels(list: List<LiveChannel>): String {
         val arr = JSONArray()
-        list.take(20).forEach { ch ->
+        list.take(60).forEach { ch ->
             arr.put(
                 JSONObject().apply {
                     put("id", ch.id)
@@ -110,6 +122,13 @@ class DataStorePreferencesStore(
                     put("streamUrl", ch.streamUrl)
                     put("sport", ch.sport.name)
                     put("isHttps", ch.isHttps)
+                    put("isIndianOrigin", ch.isIndianOrigin)
+                    put("languageTag", ch.languageTag)
+                    put("groupTitle", ch.groupTitle)
+                    put("channelCategory", ch.channelCategory.name)
+                    if (ch.logoUrl != null) put("logoUrl", ch.logoUrl)
+                    if (ch.userAgent != null) put("userAgent", ch.userAgent)
+                    if (ch.referrer != null) put("referrer", ch.referrer)
                 }
             )
         }
@@ -126,16 +145,29 @@ class DataStorePreferencesStore(
                     val streamUrl = obj.optString("streamUrl").takeIf { it.isNotBlank() } ?: continue
                     val sport = SportCategory.entries.firstOrNull { it.name == obj.optString("sport") }
                         ?: SportCategory.ALL
+                    val category = ChannelCategory.entries.firstOrNull {
+                        it.name == obj.optString("channelCategory")
+                    } ?: M3uParser.classifyChannelCategory(
+                        name = obj.optString("name", "Custom Stream"),
+                        group = obj.optString("groupTitle", "Custom URL"),
+                        streamUrl = streamUrl,
+                        sport = sport
+                    )
                     add(
                         LiveChannel(
                             id = obj.optString("id", "custom_$i"),
                             name = obj.optString("name", "Custom Stream"),
                             streamUrl = streamUrl,
-                            logoUrl = null,
-                            groupTitle = "Custom URL",
+                            logoUrl = obj.optString("logoUrl").takeIf { it.isNotBlank() },
+                            groupTitle = obj.optString("groupTitle", "Custom URL"),
                             sport = sport,
+                            userAgent = obj.optString("userAgent").takeIf { it.isNotBlank() },
+                            referrer = obj.optString("referrer").takeIf { it.isNotBlank() },
                             isHttps = obj.optBoolean("isHttps", streamUrl.startsWith("https://", true)),
-                            qualityLabel = "CUSTOM"
+                            qualityLabel = "CUSTOM",
+                            isIndianOrigin = obj.optBoolean("isIndianOrigin", false),
+                            languageTag = obj.optString("languageTag", ""),
+                            channelCategory = category
                         )
                     )
                 }

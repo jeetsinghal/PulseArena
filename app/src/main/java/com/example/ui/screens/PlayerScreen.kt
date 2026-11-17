@@ -55,6 +55,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.PlayerView
 import com.example.data.AudioTrackOption
 import com.example.data.EventStatusState
+import com.example.data.SportCategory
 import com.example.data.SubtitleTrackOption
 import com.example.data.TranslationLanguage
 import com.example.data.UiState
@@ -142,11 +143,12 @@ fun PlayerScreen(
     val exoPlayer = remember {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 10_000,
-                /* maxBufferMs = */ 30_000,
-                /* bufferForPlaybackMs = */ 1_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 3_000
+                /* minBufferMs = */ 6_000,
+                /* maxBufferMs = */ 24_000,
+                /* bufferForPlaybackMs = */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_000
             )
+            .setBackBuffer(5_000, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -196,8 +198,8 @@ fun PlayerScreen(
     fun buildHttpFactory(userAgentOverride: String?, referrer: String?): DefaultHttpDataSource.Factory {
         val factory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(8_000)
-            .setReadTimeoutMs(10_000)
+            .setConnectTimeoutMs(6_000)
+            .setReadTimeoutMs(8_000)
             .setUserAgent(
                 userAgentOverride
                     ?: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -507,7 +509,11 @@ fun PlayerScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (activeEvent != null) channel.name else channel.sport.displayName,
+                                text = when {
+                                    activeEvent != null -> channel.name
+                                    channel.sport != SportCategory.ALL -> channel.sport.displayName
+                                    else -> channel.channelCategory.displayName
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = arena.textSecondary,
                                 maxLines = 1,

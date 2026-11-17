@@ -1,6 +1,7 @@
 package com.example.data
 
 import com.example.data.abstraction.ChannelDirectorySource
+import com.example.data.abstraction.CustomImportOutcome
 import com.example.data.abstraction.ScoreboardDataSource
 import com.example.data.abstraction.SportsDataRepository
 import com.example.data.abstraction.ThemeMode
@@ -86,11 +87,47 @@ class DefaultSportsDataRepository(
                 groupTitle = "Custom URL",
                 sport = sport,
                 isHttps = safeUrl.startsWith("https://", ignoreCase = true),
-                qualityLabel = "CUSTOM"
+                qualityLabel = "CUSTOM",
+                channelCategory = if (sport != SportCategory.ALL) ChannelCategory.SPORTS else M3uParser.classifyChannelCategory(
+                    name = name,
+                    group = "Custom URL",
+                    streamUrl = safeUrl,
+                    sport = sport
+                )
             )
             preferencesStore.addCustomChannel(channel)
             channel
         }
+    }
+
+    override suspend fun importCustomStreamOrPlaylist(
+        name: String,
+        url: String,
+        sport: SportCategory
+    ): Result<CustomImportOutcome> {
+        val safeUrl = UrlSecurityValidator.validateStreamUrl(url).getOrElse {
+            return Result.failure(it)
+        }
+
+        val cleanPath = safeUrl.substringBefore('?').substringBefore('#').lowercase()
+        val looksLikePlaylist = cleanPath.endsWith(".m3u") && !cleanPath.endsWith(".m3u8")
+
+        if (looksLikePlaylist) {
+            val playlistResult = channelSource.fetchPlaylist(safeUrl)
+            val parsed = playlistResult.getOrElse { err ->
+                return Result.failure(err)
+            }.filter { ch ->
+                UrlSecurityValidator.validateStreamUrl(ch.streamUrl).isSuccess
+            }
+            if (parsed.isEmpty()) {
+                return Result.failure(IllegalArgumentException("No playable channels found in this .m3u playlist."))
+            }
+            preferencesStore.addCustomChannels(parsed)
+            return Result.success(CustomImportOutcome.PlaylistImported(parsed))
+        }
+
+        return addCustomStream(name = name, url = safeUrl, sport = sport)
+            .map { CustomImportOutcome.SingleStream(it) }
     }
 
     override suspend fun setThemeMode(mode: ThemeMode) {

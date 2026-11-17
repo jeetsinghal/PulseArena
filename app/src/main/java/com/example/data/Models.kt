@@ -26,6 +26,27 @@ enum class SportCategory(
     ACTION("Action", listOf("extreme", "surf", "skate", "snow", "ski", "outdoor", "fuel", "edge", "unbeaten", "trace", "olympic"))
 }
 
+enum class ChannelCategory(val displayName: String) {
+    ALL("All Channels"),
+    SPORTS("Sports"),
+    NEWS("News"),
+    MOVIES("Movies"),
+    SONGS("Songs"),
+    KIDS("Kids"),
+    OTT("OTT Channels")
+}
+
+enum class ChannelFeedFilter(val displayName: String) {
+    ALL("All"),
+    INDIAN_SPORTS("India Sports"),
+    HINDI("Hindi"),
+    ENGLISH("English"),
+    REGIONAL("Regional"),
+    CRICKET("Cricket"),
+    SOCCER("Football"),
+    ALL_SPORTS("All Sports")
+}
+
 enum class EventStatusState {
     LIVE, UPCOMING, FINAL
 }
@@ -43,7 +64,9 @@ data class LiveChannel(
     val isGeoRestrictedHint: Boolean = false,
     val isBackupTestStream: Boolean = false,
     val qualityLabel: String = "LIVE",
-    val isIndianOrigin: Boolean = false
+    val isIndianOrigin: Boolean = false,
+    val languageTag: String = "",
+    val channelCategory: ChannelCategory = ChannelCategory.OTT
 )
 
 data class SportEvent(
